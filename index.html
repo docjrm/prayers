@@ -109,11 +109,12 @@ label.check{display:flex; align-items:center; gap:.5rem; font-family:var(--sans)
 
     <fieldset>
       <legend>Reminder times</legend>
-      <p class="hint">A web page can't send notifications, so these only set which prayer is current. The real app will use them for daily reminders.</p>
-      <div class="row"><label for="tM">Morning</label><input type="time" id="tM"></div>
-      <div class="row"><label for="tN">Noontime</label><input type="time" id="tN"></div>
-      <div class="row"><label for="tE">Evening</label><input type="time" id="tE"></div>
-      <div class="row"><label for="tB">Bedtime</label><input type="time" id="tB"></div>
+      <p class="hint">Untick a slot to skip it. The prayer before it then stays up until the next one you keep. A web page can&#8217;t send notifications, so these times only set which prayer is current; the real app will use them for daily reminders.</p>
+      <div class="row"><label class="check"><input type="checkbox" id="oM"> Morning</label><input type="time" id="tM"></div>
+      <div class="row"><label class="check"><input type="checkbox" id="oN"> Noontime</label><input type="time" id="tN"></div>
+      <div class="row"><label class="check"><input type="checkbox" id="oE"> Evening</label><input type="time" id="tE"></div>
+      <div class="row"><label class="check"><input type="checkbox" id="oB"> Bedtime</label><input type="time" id="tB"></div>
+      <p class="hint" id="slotWarn" style="margin-top:.9rem"></p>
     </fieldset>
 
     <fieldset>
@@ -139,6 +140,7 @@ const DATA={"Morning":[{"id":"M-001","t":"My Voice in the Morning","r":"Psalm 5:
 const SLOTS=["Morning","Noontime","Evening","Bedtime"];
 const KEY="psalmapp.v1";
 const DEFAULTS={times:{Morning:"07:00",Noontime:"12:00",Evening:"17:00",Bedtime:"21:00"},
+                on:{Morning:true,Noontime:true,Evening:true,Bedtime:true},
                 closing:"Amen.",custom:"",seed:0,day0:null,offset:0};
 let S=load();
 
@@ -162,15 +164,30 @@ function dayStartDate(n){ return new Date(n*86400000+new Date().getTimezoneOffse
 function mins(hhmm){ const [h,m]=hhmm.split(":").map(Number); return h*60+m; }
 function mid(a,b){ return Math.round((a+b)/2); }
 
-// Which slot is current: nearest-time rounding between slots, fixed 3am overnight boundary.
+// Which slot is current: nearest-time rounding between the slots that are on,
+// with a fixed 3am boundary overnight.
+function activeSlots(){
+  const a=SLOTS.filter(s=>S.on[s]);
+  return a.length?a:["Morning"];
+}
 function currentSlot(now){
-  const t=now.getHours()*60+now.getMinutes();
-  const M=mins(S.times.Morning),N=mins(S.times.Noontime),E=mins(S.times.Evening),B=mins(S.times.Bedtime);
-  const b1=mid(M,N), b2=mid(N,E), b3=mid(E,B), dawn=180;
-  if(t>=dawn&&t<b1) return "Morning";
-  if(t>=b1&&t<b2)   return "Noontime";
-  if(t>=b2&&t<b3)   return "Evening";
-  return "Bedtime"; // b3 to 3am, wrapping midnight
+  const t=now.getHours()*60+now.getMinutes(), dawn=180;
+  const act=activeSlots();
+  if(act.length===1) return act[0];
+  const pts=act.map(s=>({slot:s,m:mins(S.times[s])})).sort((x,y)=>x.m-y.m);
+  // Day runs from 3am. Anything timed before 3am belongs to the tail of the night.
+  const day=pts.filter(p=>p.m>=dawn), night=pts.filter(p=>p.m<dawn);
+  const seq=[...day,...night];
+  if(!seq.length) return act[0];
+  // Walk boundaries: each slot holds until the midpoint with the next one.
+  for(let i=0;i<seq.length-1;i++){
+    const lo=(i===0)?dawn:mid(seq[i-1].m,seq[i].m);
+    const hi=mid(seq[i].m,seq[i+1].m);
+    if(t>=lo&&t<hi) return seq[i].slot;
+  }
+  const lastLo=seq.length>1?mid(seq[seq.length-2].m,seq[seq.length-1].m):dawn;
+  if(t>=lastLo||t<dawn) return seq[seq.length-1].slot;
+  return seq[0].slot;
 }
 
 // Deterministic shuffle: same day always yields the same prayer, no state to keep.
@@ -191,10 +208,14 @@ function prayerFor(slot,dayNum){
 let step=0;
 function positionAt(step){
   const now=new Date(Date.now()+S.offset*86400000);
+  const act=activeSlots();
   let day=prayerDayNumber(now), i=SLOTS.indexOf(currentSlot(now));
-  for(let s=0;s<step;s++){ i--; if(i<0){i=3; day--;} }
+  for(let s=0;s<step;s++){
+    do{ i--; if(i<0){i=3; day--;} }while(!S.on[SLOTS[i]]&&act.length<4);
+  }
   return {slot:SLOTS[i],day:day,now:now};
 }
+function maxBack(){ return Math.min(3,Math.max(0,activeSlots().length-1)); }
 
 function fmtDate(dayNum,slot,step){
   const d=new Date(dayNum*86400000);
@@ -213,7 +234,7 @@ function render(){
   document.getElementById("prayer").textContent=pr.p;
   const c=S.closing==="custom"?S.custom.trim():(S.closing==="none"?"":S.closing);
   document.getElementById("closing").textContent=c;
-  document.getElementById("back").disabled=step>=3;
+  document.getElementById("back").disabled=step>=maxBack();
   const e=document.getElementById("earlier");
   if(step>0){ e.hidden=false; e.innerHTML='<button id="toNow">Back to now</button>';
     document.getElementById("toNow").onclick=()=>{step=0;render();}; }
@@ -221,7 +242,7 @@ function render(){
   window.scrollTo(0,0);
 }
 
-document.getElementById("back").onclick=()=>{ if(step<3){step++;render();} };
+document.getElementById("back").onclick=()=>{ if(step<maxBack()){step++;render();} };
 document.getElementById("open").onclick=()=>{ fillSheet(); document.getElementById("sheet").classList.add("on"); };
 const shut=()=>{ document.getElementById("sheet").classList.remove("on"); step=0; render(); };
 document.getElementById("close").onclick=shut;
@@ -229,10 +250,27 @@ document.getElementById("done").onclick=shut;
 
 function fillSheet(){
   tM.value=S.times.Morning; tN.value=S.times.Noontime; tE.value=S.times.Evening; tB.value=S.times.Bedtime;
-  closeSel.value=S.closing; closeTxt.hidden=S.closing!=="custom"; closeTxt.value=S.custom;
+  oM.checked=S.on.Morning; oN.checked=S.on.Noontime; oE.checked=S.on.Evening; oB.checked=S.on.Bedtime;
+  [["tM","Morning"],["tN","Noontime"],["tE","Evening"],["tB","Bedtime"]].forEach(([id,slot])=>{
+    document.getElementById(id).disabled=!S.on[slot];
+  });
+  const n=activeSlots().length;
+  slotWarn.textContent = n===1 ? "One slot left on. That prayer stays up all day." : "";
 }
-[["tM","Morning"],["tN","Noontime"],["tE","Evening"],["tB","Bedtime"]].forEach(([id,slot])=>{
-  document.getElementById(id).onchange=e=>{ if(e.target.value){S.times[slot]=e.target.value; save(); render();} };
+const PAIRS=[["tM","oM","Morning"],["tN","oN","Noontime"],["tE","oE","Evening"],["tB","oB","Bedtime"]];
+PAIRS.forEach(([tid,oid,slot])=>{
+  const t=document.getElementById(tid), o=document.getElementById(oid);
+  // An empty field is not a saved value: put the stored time back so it never
+  // looks as though a change saved and then reverted.
+  t.onchange=e=>{
+    if(e.target.value){ S.times[slot]=e.target.value; save(); }
+    else { e.target.value=S.times[slot]; }
+    fillSheet(); render();
+  };
+  o.onchange=e=>{
+    if(!e.target.checked && activeSlots().length<=1){ e.target.checked=true; return; }
+    S.on[slot]=e.target.checked; save(); fillSheet(); render();
+  };
 });
 closeSel.onchange=e=>{ S.closing=e.target.value; closeTxt.hidden=S.closing!=="custom"; save(); render(); if(S.closing==="custom") closeTxt.focus(); };
 closeTxt.oninput=e=>{ S.custom=e.target.value; save(); render(); };
