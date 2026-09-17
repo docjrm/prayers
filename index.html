@@ -46,6 +46,17 @@ button.icon:disabled{opacity:.22; cursor:default;}
 button.icon:focus-visible, .txt:focus-visible, select:focus-visible, input:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
 
 .earlier{font-family:var(--sans); font-size:.75rem; color:var(--accent); margin-top:.9rem;}
+.acts{display:flex; gap:1.4rem; font-family:var(--sans); font-size:.78rem; margin-top:2.4rem;}
+.acts button{background:none; border:none; padding:0; font:inherit; color:var(--ink-soft); cursor:pointer;}
+.acts button[aria-pressed="true"]{color:var(--accent);}
+.pinned{font-family:var(--sans); font-size:.72rem; color:var(--accent); margin:.2rem 0 1.4rem; display:flex; gap:.6rem; align-items:baseline;}
+.pinned button{background:none;border:none;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer;}
+.favlist{list-style:none; padding:0; margin:0;}
+.favlist li{border-bottom:1px solid var(--rule);}
+.favlist .open{width:100%; text-align:left; background:none; border:none; padding:1rem 0; cursor:pointer; color:var(--ink); font-family:var(--serif); font-size:1.05rem;}
+.favlist .meta{display:block; font-family:var(--sans); font-size:.72rem; color:var(--ink-soft); margin-top:.2rem;}
+.detail{border-top:1px solid var(--rule); margin-top:1.4rem; padding-top:1.4rem;}
+.empty{font-family:var(--sans); font-size:.85rem; color:var(--ink-soft); line-height:1.6; margin-top:2rem;}
 .earlier button{background:none;border:none;color:inherit;font:inherit;text-decoration:underline;cursor:pointer;padding:0;}
 
 main{flex:1; display:flex; flex-direction:column; justify-content:center; padding:2.2rem 0;}
@@ -91,14 +102,30 @@ label.check{display:flex; align-items:center; gap:.5rem; font-family:var(--sans)
   </div>
 
   <main>
+    <div class="pinned" id="pinNote" hidden></div>
     <h1 id="title"></h1>
     <p class="ref" id="ref"></p>
     <blockquote class="scripture" id="scripture"></blockquote>
     <p class="prayer" id="prayer"></p>
     <p class="closing" id="closing"></p>
+    <div class="acts">
+      <button id="fav" aria-pressed="false">Save</button>
+      <button id="pin" aria-pressed="false">Pin</button>
+      <button id="favView">Saved</button>
+    </div>
   </main>
 
   <div class="earlier" id="earlier" hidden></div>
+</div>
+
+<div class="sheet" id="favSheet">
+  <div class="wrap">
+    <div class="bar"><span></span><button class="icon" id="favClose" aria-label="Close saved prayers">&times;</button></div>
+    <h2>Saved prayers</h2>
+    <p class="lede" id="favLede"></p>
+    <ul class="favlist" id="favList"></ul>
+    <div class="detail" id="favDetail" hidden></div>
+  </div>
 </div>
 
 <div class="sheet" id="sheet">
@@ -130,6 +157,12 @@ label.check{display:flex; align-items:center; gap:.5rem; font-family:var(--sans)
     </fieldset>
 
 
+    <fieldset>
+      <legend>Saved prayers</legend>
+      <p class="hint" id="savedHint"></p>
+      <button class="done" id="openFavs" style="background:transparent;color:var(--ink);border:1px solid var(--rule);margin-top:.2rem">View saved prayers</button>
+    </fieldset>
+
     <p class="about">Scripture quotations are from the World English Bible Updated (WEBU), published by eBible.org and in the public domain. Prayers &copy; John Montague.</p>
     <button class="done" id="done">Done</button>
   </div>
@@ -141,7 +174,8 @@ const SLOTS=["Morning","Noontime","Evening","Bedtime"];
 const KEY="psalmapp.v1";
 const DEFAULTS={times:{Morning:"07:00",Noontime:"12:00",Evening:"17:00",Bedtime:"21:00"},
                 on:{Morning:true,Noontime:true,Evening:true,Bedtime:true},
-                closing:"Amen.",custom:"",seed:0,day0:null,offset:0};
+                closing:"Amen.",custom:"",seed:0,day0:null,offset:0,
+                favs:[],pin:{Morning:null,Noontime:null,Evening:null,Bedtime:null}};
 let S=load();
 
 function load(){
@@ -200,9 +234,15 @@ function deckFor(slot,cycle){
   return a;
 }
 function prayerFor(slot,dayNum){
+  if(S.pin[slot]){ const p=byId(slot,S.pin[slot]); if(p) return p; }
+  return rotationFor(slot,dayNum);
+}
+function rotationFor(slot,dayNum){
   const n=dayNum-S.day0, k=((n%60)+60)%60, cycle=Math.floor(n/60);
   return DATA[slot][deckFor(slot,cycle)[k]];
 }
+function byId(slot,id){ return DATA[slot].find(p=>p.id===id)||null; }
+function isFav(id){ return S.favs.some(f=>f.id===id); }
 
 // Position: 0 = now, 1..3 = earlier slots
 let step=0;
@@ -239,16 +279,91 @@ function render(){
   if(step>0){ e.hidden=false; e.innerHTML='<button id="toNow">Back to now</button>';
     document.getElementById("toNow").onclick=()=>{step=0;render();}; }
   else e.hidden=true;
+  const pinnedHere=S.pin[p.slot]&&pr.id===S.pin[p.slot];
+  const pn=document.getElementById("pinNote");
+  if(pinnedHere&&step===0){ pn.hidden=false;
+    pn.innerHTML='<span>Pinned to '+p.slot.toLowerCase()+'</span><button id="unpin">Unpin</button>';
+    document.getElementById("unpin").onclick=()=>{ S.pin[p.slot]=null; save(); render(); };
+  } else pn.hidden=true;
+  const fb=document.getElementById("fav"), pb=document.getElementById("pin");
+  fb.textContent=isFav(pr.id)?"Saved":"Save";
+  fb.setAttribute("aria-pressed",isFav(pr.id)?"true":"false");
+  pb.textContent=pinnedHere?"Unpin":"Pin";
+  pb.setAttribute("aria-pressed",pinnedHere?"true":"false");
+  pb.disabled=step!==0;
+  pb.style.opacity=step!==0?".35":"1";
+  const favCount=S.favs.length;
+  document.getElementById("favView").textContent=favCount?("Saved ("+favCount+")"):"Saved";
+  window.__curPrayer=pr; window.__curSlot=p.slot;
   window.scrollTo(0,0);
+}
+
+document.getElementById("fav").onclick=()=>{
+  const pr=window.__curPrayer, slot=window.__curSlot;
+  if(isFav(pr.id)) S.favs=S.favs.filter(f=>f.id!==pr.id);
+  else S.favs.unshift({id:pr.id,slot:slot});
+  save(); render();
+};
+document.getElementById("pin").onclick=()=>{
+  const pr=window.__curPrayer, slot=window.__curSlot;
+  if(S.pin[slot]===pr.id){ S.pin[slot]=null; }
+  else { S.pin[slot]=pr.id; if(!isFav(pr.id)) S.favs.unshift({id:pr.id,slot:slot}); }
+  save(); render();
+};
+document.getElementById("favView").onclick=()=>{ drawFavs(); favSheet.classList.add("on"); };
+document.getElementById("favClose").onclick=()=>{ favSheet.classList.remove("on"); favDetail.hidden=true; render(); };
+
+function drawFavs(){
+  const list=document.getElementById("favList"), lede=document.getElementById("favLede");
+  list.innerHTML=""; document.getElementById("favDetail").hidden=true;
+  if(!S.favs.length){
+    lede.textContent="";
+    list.innerHTML='<li><p class="empty">Nothing saved yet. Tap Save under a prayer to keep it here, or Pin to hold it in place for that time of day.</p></li>';
+    return;
+  }
+  lede.textContent=S.favs.length+" saved. Tap one to read it.";
+  S.favs.forEach(f=>{
+    const pr=byId(f.slot,f.id); if(!pr) return;
+    const li=document.createElement("li");
+    const b=document.createElement("button"); b.className="open";
+    b.innerHTML=pr.t+'<span class="meta">'+f.slot+" \u00b7 "+pr.r+(S.pin[f.slot]===pr.id?" \u00b7 pinned":"")+"</span>";
+    b.onclick=()=>showFav(f);
+    li.appendChild(b); list.appendChild(li);
+  });
+}
+function showFav(f){
+  const pr=byId(f.slot,f.id), d=document.getElementById("favDetail");
+  const c=S.closing==="custom"?S.custom.trim():(S.closing==="none"?"":S.closing);
+  const pinned=S.pin[f.slot]===pr.id;
+  d.hidden=false;
+  d.innerHTML='<h1 style="font-size:1.5rem;margin:0 0 .3rem">'+pr.t+'</h1>'+
+    '<p class="ref">'+pr.r+'</p>'+
+    '<blockquote class="scripture">'+pr.s+'</blockquote>'+
+    '<p class="prayer" style="font-size:1.12rem">'+pr.p+'</p>'+
+    (c?'<p class="closing" style="font-size:1.12rem">'+c+'</p>':'')+
+    '<div class="acts"><button id="fPin">'+(pinned?"Unpin from ":"Pin to ")+f.slot.toLowerCase()+
+    '</button><button id="fDel">Remove</button></div>';
+  document.getElementById("fPin").onclick=()=>{
+    S.pin[f.slot]=pinned?null:pr.id; save(); drawFavs(); if(!pinned) showFav(f);
+  };
+  document.getElementById("fDel").onclick=()=>{
+    S.favs=S.favs.filter(x=>x.id!==pr.id);
+    if(S.pin[f.slot]===pr.id) S.pin[f.slot]=null;
+    save(); drawFavs();
+  };
+  d.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 document.getElementById("back").onclick=()=>{ if(step<maxBack()){step++;render();} };
 document.getElementById("open").onclick=()=>{ fillSheet(); document.getElementById("sheet").classList.add("on"); };
+document.getElementById("openFavs").onclick=()=>{ sheet.classList.remove("on"); drawFavs(); favSheet.classList.add("on"); };
 const shut=()=>{ document.getElementById("sheet").classList.remove("on"); step=0; render(); };
 document.getElementById("close").onclick=shut;
 document.getElementById("done").onclick=shut;
 
 function fillSheet(){
+  const favN=S.favs.length, pins=SLOTS.filter(s=>S.pin[s]);
+  savedHint.textContent=(favN?favN+" saved.":"Nothing saved yet.")+(pins.length?" Pinned: "+pins.join(", ").toLowerCase()+".":"");
   tM.value=S.times.Morning; tN.value=S.times.Noontime; tE.value=S.times.Evening; tB.value=S.times.Bedtime;
   oM.checked=S.on.Morning; oN.checked=S.on.Noontime; oE.checked=S.on.Evening; oB.checked=S.on.Bedtime;
   [["tM","Morning"],["tN","Noontime"],["tE","Evening"],["tB","Bedtime"]].forEach(([id,slot])=>{
