@@ -25,6 +25,7 @@ body[data-slot="Evening"]{--ink:#F2E4DC;--ink-soft:#C4A79C;--bg:#3B2C33;--glow:#
 body[data-slot="Bedtime"]{--ink:#DFE3F2;--ink-soft:#8E96B8;--bg:#161B2E;--glow:#232B47;--rule:#38416A;--accent:#8FA3E0;}
 
 *{box-sizing:border-box;}
+[hidden]{display:none !important;}   /* an explicit display: rule otherwise overrides the hidden attribute */
 html,body{margin:0;padding:0;}
 body{
   background:var(--bg); color:var(--ink); font-family:var(--serif);
@@ -308,7 +309,7 @@ function render(){
   else e.hidden=true;
   const pinnedHere=S.pin[p.slot]&&pr.id===S.pin[p.slot];
   const pn=document.getElementById("pinNote");
-  if(pinnedHere&&step===0){ pn.hidden=false;
+  if(pinnedHere){ pn.hidden=false;
     pn.innerHTML='<span>Pinned to '+p.slot.toLowerCase()+'</span><button id="unpin">Unpin</button>';
     document.getElementById("unpin").onclick=()=>{ S.pin[p.slot]=null; save(); render(); };
   } else pn.hidden=true;
@@ -317,8 +318,6 @@ function render(){
   fb.setAttribute("aria-pressed",isFav(pr.id)?"true":"false");
   pb.textContent=pinnedHere?"Unpin":"Pin";
   pb.setAttribute("aria-pressed",pinnedHere?"true":"false");
-  pb.disabled=step!==0;
-  pb.style.opacity=step!==0?".35":"1";
   const favCount=S.favs.length;
   document.getElementById("favView").textContent=favCount?("Saved ("+favCount+")"):"Saved";
   window.__curPrayer=pr; window.__curSlot=p.slot;
