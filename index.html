@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Psalm Prayers</title>
+<title>Daily Psalm Prayers</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daily Psalm Prayers">
+<meta name="application-name" content="Daily Psalm Prayers">
+<meta name="theme-color" content="#E7EFF4">
+<meta name="description" content="Four Psalm-based prayers a day: morning, noontime, evening and bedtime.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -135,8 +141,8 @@ label.check{display:flex; align-items:center; gap:.5rem; font-family:var(--sans)
 <div class="sheet" id="sheet">
   <div class="wrap">
     <div class="bar"><span></span><button class="icon" id="close" aria-label="Close settings">&times;</button></div>
-    <h2>Settings</h2>
-    <p class="lede">Times and closing are saved on this device.</p>
+    <h2>Daily Psalm Prayers</h2>
+    <p class="lede">Four prayers a day, drawn from the Psalms. Times and closing are saved on this device.</p>
 
     <fieldset>
       <legend>Reminder times</legend>
@@ -335,7 +341,7 @@ function drawBanner(){
 
 async function shareApp(){
   const msg=document.getElementById("shareMsg");
-  const payload={title:"Psalm Prayers",text:SHARE_TEXT,url:APP_IOS||SHARE_URL};
+  const payload={title:"Daily Psalm Prayers",text:SHARE_TEXT,url:APP_IOS||SHARE_URL};
   try{
     if(navigator.share){ await navigator.share(payload); msg.textContent=""; return; }
     await navigator.clipboard.writeText(SHARE_TEXT+" "+payload.url);
